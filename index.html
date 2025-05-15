@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XOCONODO CAD - Completo con Referencias y Arcos</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; background-color: #f0f0f0; padding-top: 10px; overflow: hidden; }
+        .app-container { display: flex; flex-direction: column; align-items: center; padding: 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 95vw; }
+        .controls { margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; display: flex; flex-wrap: wrap; align-items: center; width: fit-content; max-width: 100%;}
+        .controls button, .controls select { margin-right: 8px; margin-bottom: 5px; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #e7e7e7; cursor: pointer; font-size: 0.9em; }
+        .controls button.active { background-color: #d4eaff; border-color: #a1c4e9; }
+        .controls button.edit-mode-active { background-color: #ffddc1; border-color: #ffb870; }
+        .controls button:hover, .controls select:hover { background-color: #ddd; }
+        .controls button:disabled { background-color: #f0f0f0; color: #aaa; cursor: not-allowed; }
+        .controls .ayudas-label, .controls .spline-options-label, .controls .offset-label { margin-left: 10px; margin-right: 5px; font-weight: bold; font-size: 0.9em; }
+        .spline-options, .offset-options { display: contents; }
+        .offset-controls { display: flex; align-items: center; margin-left: 5px; margin-right:8px; margin-bottom:5px; }
+        .offset-controls span { margin-right: 5px; font-size: 0.9em;}
+        .offset-controls input[type="number"] { width: 50px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; font-size: 0.9em;}
+        .offset-side-btn { padding: 5px 7px; margin: 0 2px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 3px; cursor: pointer; font-size: 0.85em; }
+        .offset-side-btn.active { background-color: #cce5ff; border-color: #a1c4e9; font-weight: bold; }
+        
+        .references-panel {
+            margin-bottom: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; width: fit-content; max-width: 100%;
+        }
+        .references-panel h3 { margin-top: 0; margin-bottom: 8px; font-size: 0.9em; text-align: center;}
+        .references-group { display: flex; flex-wrap: wrap; justify-content: center; }
+        .reference-checkbox { display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px; font-size: 0.85em; }
+        .reference-checkbox input { margin-right: 4px; transform: scale(0.9); }
+
+        #canvasContainer { position: relative; /* For snap indicator positioning */ }
+        #cadCanvas { border: 1px solid #ccc; display: block; /* Prevents extra space below canvas */ }
+        #snapIndicator {
+            position: absolute;
+            pointer-events: none; /* Allows clicks to pass through to canvas */
+            opacity: 0;
+            transition: opacity 0.1s ease;
+            z-index: 10; /* Ensure it's above canvas content if needed */
+        }
+        .snap-text {
+            position: absolute; /* Positioned relative to #snapIndicator parent */
+            background-color: rgba(255, 255, 204, 0.9); /* Slight transparency */
+            border: 1px solid #aaa;
+            border-radius: 3px;
+            padding: 2px 5px;
+            font-size: 11px;
+            color: #333;
+            pointer-events: none;
+            white-space: nowrap;
+            transform: translate(15px, -20px); /* Default offset from snap point */
+        }
+
+        #toolStatus { margin-top: 10px; font-size: 0.85em; color: #555; min-height: 18px; padding: 4px 8px; border-radius: 4px; background-color: #f9f9f9; border: 1px solid #ddd; text-align: center; width: fit-content; max-width: 90%;}
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <h1>XOCONODO CAD</h1>
+        <div class="controls">
+            <button id="selectToolBtn">Seleccionar</button>
+            <button id="lineToolBtn">Línea</button>
+            <button id="circleToolBtn">Círculo</button>
+            <button id="arcToolBtn">Arco</button>
+            <button id="splineToolBtn">Spline</button>
+            <button id="editPointsBtn" style="display:none;">Editar Geometría</button>
+            <button id="offsetToolBtn">Equidistancia</button>
+            <button id="trimToolBtn">Recortar</button>
+            <button id="extendToolBtn">Alargar</button>
+
+            <div class="offset-controls" id="offsetControlsContainer" style="display:none;">
+                <span class="offset-label">Equidistancia:</span>
+                <span>Dist:</span>
+                <input type="number" id="offsetDistanceInput" value="10" step="1" min="0.1" />
+                <span style="margin-left: 5px;">Lado:</span>
+                <button id="offsetLeftBtn" class="offset-side-btn active">Izq</button>
+                <button id="offsetRightBtn" class="offset-side-btn">Der</button>
+                <button id="offsetBothBtn" class="offset-side-btn">Ambos</button>
+            </div>
+
+            <div class="spline-options" id="splineOptionsContainer" style="display:none;">
+                <span class="spline-options-label" id="splineOptionsLabel">Spline:</span>
+                <select id="splineInterpolationSelect">
+                    <option value="cardinal" selected>Cardinal</option>
+                    <option value="linear">Lineal</option>
+                    <option value="bezier">Bezier</option>
+                    <option value="catmull-rom">Catmull-Rom</option>
+                </select>
+            </div>
+
+            <button id="clearBtn">Limpiar Lienzo</button>
+            <span class="ayudas-label">Ayudas:</span>
+            <button id="snapToGridBtn">Rejilla Off</button>
+            <button id="orthoModeBtn">Orto Off</button>
+        </div>
+
+        <div class="references-panel">
+            <h3>Referencias a Objetos:</h3>
+            <div class="references-group">
+                <label class="reference-checkbox"><input type="checkbox" id="refEndpoint" checked>P. Final</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refMidpoint">P. Medio</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refCenter" checked>Centro</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refQuadrant">Cuadrante</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refIntersection" checked>Intersección</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refTangent">Tangente</label>
+                <label class="reference-checkbox"><input type="checkbox" id="refNearest">Cercano</label>
+            </div>
+        </div>
+        
+        <div id="canvasContainer">
+            <canvas id="cadCanvas" width="800" height="550"></canvas>
+            <div id="snapIndicator"></div>
+        </div>
+
+        <div id="toolStatus">Herramienta actual: Seleccionar Objeto</div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('cadCanvas');
+            const ctx = canvas.getContext('2d');
+            const toolStatusDiv = document.getElementById('toolStatus');
+            const snapIndicatorDiv = document.getElementById('snapIndicator');
+
+            const selectToolBtn = document.getElementById('selectToolBtn');
+            const lineToolBtn = document.getElementById('lineToolBtn');
+            const circleToolBtn = document.getElementById('circleToolBtn');
+            const arcToolBtn = document.getElementById('arcToolBtn');
+            const splineToolBtn = document.getElementById('splineToolBtn');
+            const editPointsBtn = document.getElementById('editPointsBtn');
+            const offsetToolBtn = document.getElementById('offsetToolBtn');
+            const trimToolBtn = document.getElementById('trimToolBtn');
+            const extendToolBtn = document.getElementById('extendToolBtn');
+            const offsetControlsContainer = document.getElementById('offsetControlsContainer');
+            const offsetDistanceInput = document.getElementById('offsetDistanceInput');
+            const offsetLeftBtn = document.getElementById('offsetLeftBtn');
+            const offsetRightBtn = document.getElementById('offsetRightBtn');
+            const offsetBothBtn = document.getElementById('offsetBothBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const snapToGridBtn = document.getElementById('snapToGridBtn');
+            const orthoModeBtn = document.getElementById('orthoModeBtn');
+
+            const splineOptionsContainer = document.getElementById('splineOptionsContainer');
+            const splineInterpolationSelect = document.getElementById('splineInterpolationSelect');
+
+            const refEndpointCb = document.getElementById('refEndpoint');
+            const refMidpointCb = document.getElementById('refMidpoint');
+            const refCenterCb = document.getElementById('refCenter');
+            const refQuadrantCb = document.getElementById('refQuadrant');
+            const refIntersectionCb = document.getElementById('refIntersection');
+            const refTangentCb = document.getElementById('refTangent');
+            const refNearestCb = document.getElementById('refNearest');
+
+            const GRID_SIZE = 20;
+            const HIT_TOLERANCE_SCREEN = 6;
+            const CONTROL_POINT_RADIUS_SCREEN = 5;
+            const SNAP_TOLERANCE_SCREEN = 15;
+            const SNAP_SYMBOL_SIZE = 8;
+
+            let currentTool = 'select';
+            let drawing = false;
+            let startPoint = null;
+            let arcMidPoint = null; // For 3-point arc drawing
+            let currentSplinePoints = [];
+            let currentSplineInterpolation = 'cardinal';
+            let objects = [];
+            let nextObjectId = 1;
+            let selectedObjectIds = [];
+            let mousePosWorld = { x: 0, y: 0 };
+            let currentSnap = null;
+
+            let isDraggingObject = false;
+            let dragStartMousePos_World = null;
+            let dragStartObjectPositions = new Map();
+
+            let scale = 1.0;
+            const MIN_SCALE = 0.1; const MAX_SCALE = 10.0;
+            let offsetCanvas = { x: 0, y: 0 };
+
+            let isPanning = false;
+            let panStartMousePos_Screen = null;
+
+            let snapToGridEnabled = false;
+            let orthoModeEnabled = false;
+
+            let editModeActive = false;
+            let editableObject = null;
+            let controlPointHandles = [];
+            let isDraggingControlPoint = false;
+            let dragStartHandlePositions = new Map();
+
+            let objectToOffset = null;
+            let offsetPreviewObjects = [];
+            let offsetSide = "left";
+
+            let trimState = { phase: 0, boundaries: [], objectToTrimId: null, intersections: [], previewSegment: null };
+            let extendState = { objectToExtendId: null, boundaryId: null, whichEnd: null, previewPoint: null, possibleExtensions: [] };
+
+            function getNewObjectId() { return nextObjectId++; }
+            function screenToWorld(sX, sY) { return { x: (sX - offsetCanvas.x) / scale, y: (sY - offsetCanvas.y) / scale }; }
+            function worldToScreen(wX, wY) { return { x: wX * scale + offsetCanvas.x, y: wY * scale + offsetCanvas.y }; }
+            
+            function distSq(p1, p2) { const dx = p1.x - p2.x; const dy = p1.y - p2.y; return dx * dx + dy * dy; }
+            function distance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+
+            function calculateArcParameters(p1, p2, p3) {
+                const temp = p2.x * p2.x + p2.y * p2.y;
+                const bc = (p1.x * p1.x + p1.y * p1.y - temp) / 2;
+                const cd = (temp - p3.x * p3.x - p3.y * p3.y) / 2;
+                const det = (p1.x - p2.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p2.y);
+
+                if (Math.abs(det) < 1e-9) { return null; } // Collinear points
+
+                const idet = 1 / det;
+                const centerX = (bc * (p2.y - p3.y) - cd * (p1.y - p2.y)) * idet;
+                const centerY = (cd * (p1.x - p2.x) - bc * (p2.x - p3.x)) * idet;
+                const radius = Math.hypot(p1.x - centerX, p1.y - centerY);
+
+                const startAngle = Math.atan2(p1.y - centerY, p1.x - centerX);
+                const midAngle = Math.atan2(p2.y - centerY, p2.x - centerX);
+                const endAngle = Math.atan2(p3.y - centerY, p3.x - centerX);
+
+                let clockwise = false;
+                // This logic is from the example provided for arcs.
+                // It determines if the arc sweep from start to end, passing through mid, is clockwise.
+                if (Math.abs(startAngle - endAngle) > Math.PI) {
+                    if (startAngle < endAngle) {
+                        clockwise = true;
+                        // Optional: Adjust midAngle if it implies going the "long way around" past 0/2PI
+                        // if (modMidAngle < startAngle && modMidAngle < endAngle) modMidAngle += 2 * Math.PI;
+                    } else {
+                        clockwise = false;
+                        // if (modMidAngle > startAngle && modMidAngle > endAngle) modMidAngle -= 2 * Math.PI;
+                    }
+                } else {
+                    // Check if midAngle is "between" start and end in the shorter sweep
+                    if ((startAngle <= midAngle && midAngle <= endAngle) ||
+                        (endAngle <= midAngle && midAngle <= startAngle)) {
+                        clockwise = startAngle > endAngle;
+                    } else {
+                        // Midpoint is outside the shorter sweep, so arc must go the "long way"
+                        clockwise = startAngle < endAngle;
+                    }
+                }
+                return { centerX, centerY, radius, startAngle, endAngle, clockwise };
+            }
+
+            function applyOrthoMode(currentWorldPos, referenceWorldPos) { 
+                if (!orthoModeEnabled || !referenceWorldPos || !(drawing && !editModeActive && !isDraggingObject)) return currentWorldPos; 
+                const dX = Math.abs(currentWorldPos.x - referenceWorldPos.x); 
+                const dY = Math.abs(currentWorldPos.y - referenceWorldPos.y); 
+                if (dX > dY) return { x: currentWorldPos.x, y: referenceWorldPos.y }; 
+                else return { x: referenceWorldPos.x, y: currentWorldPos.y }; 
+            }
+
+            function snapToGrid(worldPos) {
+                if (!snapToGridEnabled) return worldPos;
+                return {
+                    x: Math.round(worldPos.x / GRID_SIZE) * GRID_SIZE,
+                    y: Math.round(worldPos.y / GRID_SIZE) * GRID_SIZE
+                };
+            }
+
+            function getLineSegmentIntersection(l1, l2) {
+                const x1 = l1.p1.x, y1 = l1.p1.y, x2 = l1.p2.x, y2 = l1.p2.y;
+                const x3 = l2.p1.x, y3 = l2.p1.y, x4 = l2.p2.x, y4 = l2.p2.y;
+                const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                if (den === 0) return null;
+                const tNum = (x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4);
+                const uNum = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3));
+                const t = tNum / den; const u = uNum / den;
+                const epsilon = 1e-6;
+                if (t >= -epsilon && t <= 1 + epsilon && u >= -epsilon && u <= 1 + epsilon) {
+                    return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+                }
+                return null;
+            }
+
+            function getNearestPointOnLineSegment(p, lineStart, lineEnd) {
+                const l2 = distSq(lineStart, lineEnd);
+                if (l2 === 0) return { ...lineStart };
+                let t = ((p.x - lineStart.x) * (lineEnd.x - lineStart.x) + (p.y - lineStart.y) * (lineEnd.y - lineStart.y)) / l2;
+                t = Math.max(0, Math.min(1, t));
+                return { x: lineStart.x + t * (lineEnd.x - lineStart.x), y: lineStart.y + t * (lineEnd.y - lineStart.y) };
+            }
+
+            function getTangentPointsFromPointToCircle(extPt, circleCenter, radius) {
+                const dSq = distSq(extPt, circleCenter);
+                const rSq = radius * radius;
+                if (dSq < rSq - 1e-9) return []; 
+                if (Math.abs(dSq - rSq) < 1e-9) return [{...extPt}];
+
+                const d = Math.sqrt(dSq);
+                const K = Math.sqrt(dSq - rSq); 
+                
+                const tangentPoints = [];
+                const angle_ep_c = Math.atan2(circleCenter.y - extPt.y, circleCenter.x - extPt.x);
+                const angle_delta = Math.acos(K / d) ;
+
+                const tp1_angle = angle_ep_c + angle_delta;
+                tangentPoints.push({
+                    x: extPt.x + K * Math.cos(tp1_angle),
+                    y: extPt.y + K * Math.sin(tp1_angle)
+                });
+
+                const tp2_angle = angle_ep_c - angle_delta;
+                 tangentPoints.push({
+                    x: extPt.x + K * Math.cos(tp2_angle),
+                    y: extPt.y + K * Math.sin(tp2_angle)
+                });
+                return tangentPoints.filter(p => !isNaN(p.x) && !isNaN(p.y));
+            }
+
+            function findSnaps(worldMousePos, drawingStartPoint = null) {
+                const snapToleranceWorldSq = (SNAP_TOLERANCE_SCREEN / scale) * (SNAP_TOLERANCE_SCREEN / scale);
+                let closestSnap = null;
+                let minDistanceSq = snapToleranceWorldSq;
+
+                function updateClosestSnap(snap, dSq) {
+                    if (dSq < minDistanceSq) {
+                        minDistanceSq = dSq;
+                        closestSnap = snap;
+                    }
+                }
+
+                objects.forEach(obj => {
+                    if (obj.isPreview) return;
+
+                    if (obj.type === 'line') {
+                        const p1 = { x: obj.startX, y: obj.startY };
+                        const p2 = { x: obj.endX, y: obj.endY };
+                        if (refEndpointCb.checked) {
+                            updateClosestSnap({ type: 'endpoint', x: p1.x, y: p1.y, text: 'P. Final' }, distSq(worldMousePos, p1));
+                            updateClosestSnap({ type: 'endpoint', x: p2.x, y: p2.y, text: 'P. Final' }, distSq(worldMousePos, p2));
+                        }
+                        if (refMidpointCb.checked) {
+                            const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                            updateClosestSnap({ type: 'midpoint', x: mid.x, y: mid.y, text: 'P. Medio' }, distSq(worldMousePos, mid));
+                        }
+                        if (refNearestCb.checked) {
+                            const nearest = getNearestPointOnLineSegment(worldMousePos, p1, p2);
+                            if (!refEndpointCb.checked || (distance(nearest, p1) > 1e-6 && distance(nearest, p2) > 1e-6)) {
+                                updateClosestSnap({ type: 'nearest', x: nearest.x, y: nearest.y, text: 'Cercano' }, distSq(worldMousePos, nearest));
+                            }
+                        }
+                    } else if (obj.type === 'circle') {
+                        const center = { x: obj.centerX, y: obj.centerY };
+                        if (refCenterCb.checked) {
+                            updateClosestSnap({ type: 'center', x: center.x, y: center.y, text: 'Centro' }, distSq(worldMousePos, center));
+                        }
+                        if (refQuadrantCb.checked) {
+                            const qPoints = [
+                                { x: center.x, y: center.y - obj.radius, name: 'N' }, { x: center.x + obj.radius, y: center.y, name: 'E' },
+                                { x: center.x, y: center.y + obj.radius, name: 'S' }, { x: center.x - obj.radius, y: center.y, name: 'O' }
+                            ];
+                            qPoints.forEach(q => updateClosestSnap({ type: 'quadrant', x: q.x, y: q.y, text: `Cuadrante` }, distSq(worldMousePos, q)));
+                        }
+                        if (refTangentCb.checked && drawingStartPoint && (currentTool === 'line' || (currentTool === 'spline' && currentSplinePoints.length > 0))) {
+                            const tangentPoints = getTangentPointsFromPointToCircle(drawingStartPoint, center, obj.radius);
+                            tangentPoints.forEach(tp => updateClosestSnap({ type: 'tangent', x: tp.x, y: tp.y, text: 'Tangente' }, distSq(worldMousePos, tp)));
+                        }
+                    } else if (obj.type === 'arc') {
+                        const center = { x: obj.centerX, y: obj.centerY };
+                        if (refCenterCb.checked) {
+                            updateClosestSnap({ type: 'center', x: center.x, y: center.y, text: 'Centro (Arco)' }, distSq(worldMousePos, center));
+                        }
+                        if (refEndpointCb.checked) {
+                            const p1_arc = { x: obj.centerX + obj.radius * Math.cos(obj.startAngle), y: obj.centerY + obj.radius * Math.sin(obj.startAngle) };
+                            const p3_arc = { x: obj.centerX + obj.radius * Math.cos(obj.endAngle), y: obj.centerY + obj.radius * Math.sin(obj.endAngle) };
+                            updateClosestSnap({ type: 'endpoint', x: p1_arc.x, y: p1_arc.y, text: 'P. Final (Arco)' }, distSq(worldMousePos, p1_arc));
+                            updateClosestSnap({ type: 'endpoint', x: p3_arc.x, y: p3_arc.y, text: 'P. Final (Arco)' }, distSq(worldMousePos, p3_arc));
+                        }
+                         if (refQuadrantCb.checked) {
+                            const qPoints = [
+                                { x: center.x, y: center.y - obj.radius }, { x: center.x + obj.radius, y: center.y },
+                                { x: center.x, y: center.y + obj.radius }, { x: center.x - obj.radius, y: center.y }
+                            ];
+                            qPoints.forEach(q => updateClosestSnap({ type: 'quadrant', x: q.x, y: q.y, text: `Cuadrante (Arco)` }, distSq(worldMousePos, q)));
+                        }
+                    }
+                });
+
+                if (refIntersectionCb.checked) {
+                    for (let i = 0; i < objects.length; i++) {
+                        if (objects[i].type !== 'line' || objects[i].isPreview) continue;
+                        for (let j = i + 1; j < objects.length; j++) {
+                            if (objects[j].type !== 'line' || objects[j].isPreview) continue;
+                            const line1 = { p1: {x: objects[i].startX, y: objects[i].startY}, p2: {x: objects[i].endX, y: objects[i].endY} };
+                            const line2 = { p1: {x: objects[j].startX, y: objects[j].startY}, p2: {x: objects[j].endX, y: objects[j].endY} };
+                            const intersectionPt = getLineSegmentIntersection(line1, line2);
+                            if (intersectionPt) {
+                                updateClosestSnap({ type: 'intersection', x: intersectionPt.x, y: intersectionPt.y, text: 'Intersección' }, distSq(worldMousePos, intersectionPt));
+                            }
+                        }
+                    }
+                }
+                return closestSnap;
+            }
+
+            function showSnapIndicator() {
+                snapIndicatorDiv.innerHTML = '';
+                if (!currentSnap || !(drawing && (currentTool === 'line' || currentTool === 'circle' || currentTool === 'spline' || currentTool === 'arc'))) {
+                    snapIndicatorDiv.style.opacity = '0';
+                    return;
+                }
+
+                const screenPos = worldToScreen(currentSnap.x, currentSnap.y);
+                let snapTextElement = document.createElement('div');
+                snapTextElement.className = 'snap-text';
+                snapTextElement.innerText = currentSnap.text;
+                snapIndicatorDiv.appendChild(snapTextElement);
+
+                snapIndicatorDiv.style.left = screenPos.x + 'px';
+                snapIndicatorDiv.style.top = screenPos.y + 'px';
+                snapIndicatorDiv.style.opacity = '1';
+
+                ctx.save();
+                ctx.setTransform(1, 0, 0, 1, 0, 0); 
+                ctx.translate(screenPos.x, screenPos.y);
+                ctx.lineWidth = 1.5; 
+                ctx.beginPath();
+
+                switch (currentSnap.type) {
+                    case 'endpoint': ctx.strokeStyle = '#ff4136'; ctx.rect(-SNAP_SYMBOL_SIZE/2, -SNAP_SYMBOL_SIZE/2, SNAP_SYMBOL_SIZE, SNAP_SYMBOL_SIZE); break;
+                    case 'midpoint': ctx.strokeStyle = '#2ecc40'; ctx.moveTo(0, -SNAP_SYMBOL_SIZE/2); ctx.lineTo(SNAP_SYMBOL_SIZE/2, SNAP_SYMBOL_SIZE/2); ctx.lineTo(-SNAP_SYMBOL_SIZE/2, SNAP_SYMBOL_SIZE/2); ctx.closePath(); break;
+                    case 'center': ctx.strokeStyle = '#0074d9'; ctx.arc(0, 0, SNAP_SYMBOL_SIZE/1.5, 0, Math.PI * 2); break;
+                    case 'quadrant': ctx.strokeStyle = '#b10dc9'; ctx.moveTo(0,-SNAP_SYMBOL_SIZE/2);ctx.lineTo(SNAP_SYMBOL_SIZE/2,0);ctx.lineTo(0,SNAP_SYMBOL_SIZE/2);ctx.lineTo(-SNAP_SYMBOL_SIZE/2,0);ctx.closePath(); break;
+                    case 'intersection': ctx.strokeStyle = '#ff851b'; const cs = SNAP_SYMBOL_SIZE/1.5; ctx.moveTo(-cs,-cs);ctx.lineTo(cs,cs);ctx.moveTo(cs,-cs);ctx.lineTo(-cs,cs); break;
+                    case 'tangent': ctx.strokeStyle = '#ffdc00'; ctx.arc(0,0,SNAP_SYMBOL_SIZE/2,0,Math.PI*2); ctx.moveTo(0,-SNAP_SYMBOL_SIZE*0.8);ctx.lineTo(0,SNAP_SYMBOL_SIZE*0.8); break;
+                    case 'nearest': ctx.strokeStyle = '#7fdbff'; const hs=SNAP_SYMBOL_SIZE/2; ctx.moveTo(-hs,-hs);ctx.lineTo(hs,hs); ctx.moveTo(hs,-hs);ctx.lineTo(-hs,hs); ctx.moveTo(-hs,0);ctx.lineTo(hs,0); ctx.moveTo(0,-hs);ctx.lineTo(0,hs); break;
+                    case 'grid': ctx.fillStyle = '#aaaaaa'; ctx.arc(0,0, 2,0,Math.PI*2); ctx.fill(); ctx.restore(); return;
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function getMouseWorldPositionWithAids(event) {
+                const r = canvas.getBoundingClientRect(); const sX = event.clientX - r.left; const sY = event.clientY - r.top;
+                const rawWp = screenToWorld(sX, sY);
+                let wp = { ...rawWp };
+                currentSnap = null; 
+
+                let referencePointForDrawing = null;
+                if (drawing) {
+                    if ((currentTool === 'line' || currentTool === 'circle') && startPoint) {
+                        referencePointForDrawing = startPoint;
+                    } else if (currentTool === 'spline' && currentSplinePoints.length > 0) {
+                        referencePointForDrawing = currentSplinePoints[currentSplinePoints.length - 1];
+                    } else if (currentTool === 'arc') {
+                        if (arcMidPoint) referencePointForDrawing = arcMidPoint;
+                        else if (startPoint) referencePointForDrawing = startPoint;
+                    }
+                }
+
+                if (drawing && !editModeActive && !isDraggingObject && 
+                    (currentTool === 'line' || currentTool === 'circle' || currentTool === 'spline' || currentTool === 'arc')) {
+                    const potentialSnap = findSnaps(rawWp, referencePointForDrawing);
+                    if (potentialSnap) {
+                        let allowSnap = true;
+                        if (referencePointForDrawing && distance(potentialSnap, referencePointForDrawing) < 1e-6 / scale) {
+                             if (potentialSnap.type === 'nearest' && objects.filter(o => !o.isPreview).length < 1) {
+                                allowSnap = false;
+                             }
+                        }
+                        if (allowSnap) {
+                            currentSnap = potentialSnap;
+                            wp = { x: currentSnap.x, y: currentSnap.y };
+                        }
+                    }
+                }
+                
+                if (!currentSnap) { 
+                    if (isDraggingControlPoint || isDraggingObject) {
+                        if (snapToGridEnabled) wp = snapToGrid(rawWp);
+                    } else if (drawing && !editModeActive) {
+                        if (referencePointForDrawing && orthoModeEnabled) {
+                            wp = applyOrthoMode(rawWp, referencePointForDrawing); 
+                            if (snapToGridEnabled) { 
+                                wp = snapToGrid(wp);
+                            }
+                        } else if (snapToGridEnabled) {
+                            wp = snapToGrid(rawWp);
+                        }
+                    }
+                }
+                return wp;
+            }
+
+            function updateToolStatusAndCursor() {
+                let sMsg = `Herramienta: ${currentTool.charAt(0).toUpperCase() + currentTool.slice(1).replace(/_/g, ' ')}`;
+                if (editModeActive && editableObject) {
+                    sMsg = `Editando Puntos (ID: ${editableObject.id}, Tipo: ${editableObject.type}). Ctrl+Click para multiselect. Esc para salir.`;
+                } else if (currentTool === 'spline') {
+                    let splineStatusText = splineInterpolationSelect.options[splineInterpolationSelect.selectedIndex].text;
+                    if (drawing) {
+                        if (currentSplineInterpolation === 'bezier') {
+                            const numPts = currentSplinePoints.length;
+                            if (numPts === 0) splineStatusText += " (Inicio)";
+                            else if (numPts === 1) splineStatusText += " (CP1)";
+                            else if ((numPts - 1) % 3 === 0 ) splineStatusText += " (Siguiente Pto. Ancla)";
+                            else if ((numPts - 1) % 3 === 1 ) splineStatusText += " (Control 1)";
+                            else if ((numPts - 1) % 3 === 2 ) splineStatusText += " (Control 2)";
+                        }
+                        sMsg = `Dibujando Spline (${splineStatusText} - ${currentSplinePoints.length} puntos. Enter para finalizar, Esc para cancelar)`;
+                    } else {
+                         sMsg = `Herramienta: Spline (${splineStatusText})`;
+                    }
+                } else if (currentTool === 'arc' && drawing) {
+                    if (!arcMidPoint) {
+                        sMsg = `Dibujando Arco: Defina punto intermedio (Esc para cancelar)`;
+                    } else {
+                        sMsg = `Dibujando Arco: Defina punto final (Esc para cancelar)`;
+                    }
+                } else if (currentTool === 'offset') {
+                    sMsg = `Equidistancia (Seleccione objeto. Lado: ${offsetSide === "left" ? "Izquierdo" : offsetSide === "right" ? "Derecho" : "Ambos"})`;
+                    if (objectToOffset) {
+                        sMsg = `Equidistancia (ID: ${objectToOffset.id}. Click para aplicar o Enter. Lado: ${offsetSide === "left" ? "Izquierdo" : offsetSide === "right" ? "Derecho" : "Ambos"})`;
+                    }
+                } else if (currentTool === 'trim') {
+                    sMsg = "Recortar - ";
+                    if (trimState.phase === 0 || trimState.phase === 1) sMsg += `Seleccione ${trimState.boundaries.length > 0 ? trimState.boundaries.length : ''} objetos límite (Enter para confirmar)`;
+                    else if (trimState.phase === 2) sMsg += "Seleccione objeto a recortar";
+                    else if (trimState.phase === 3) sMsg += "Haga clic en la parte a eliminar";
+                } else if (currentTool === 'extend') {
+                    if (!extendState.objectToExtendId) {
+                        sMsg = "Alargar: Seleccione línea a alargar (cerca del extremo)";
+                    } else if (!extendState.boundaryId && extendState.previewPoint) { 
+                        sMsg = `Alargar (ID: ${extendState.objectToExtendId}): Seleccione objeto límite o Click/Enter para alargar al más cercano`;
+                    } else if (extendState.boundaryId && extendState.previewPoint) { 
+                         sMsg = `Alargar (ID: ${extendState.objectToExtendId}): Click para alargar al límite (ID: ${extendState.boundaryId})`;
+                    }
+                     else if (!extendState.previewPoint && extendState.objectToExtendId) { 
+                        sMsg = `Alargar (ID: ${extendState.objectToExtendId}): No hay límite de extensión. Seleccione objeto límite o Esc.`;
+                    }
+                }
+                toolStatusDiv.textContent = sMsg;
+
+                ['select', 'line', 'circle', 'arc', 'spline', 'offset', 'trim', 'extend'].forEach(t => {
+                    const btn = document.getElementById(t + 'ToolBtn');
+                    if (btn) btn.classList.remove('active');
+                });
+                editPointsBtn.classList.remove('edit-mode-active');
+
+                if(currentTool.startsWith('edit_points_active')) {
+                    editPointsBtn.classList.add('edit-mode-active');
+                } else {
+                    const currentBtn = document.getElementById(currentTool + 'ToolBtn');
+                    if (currentBtn) currentBtn.classList.add('active');
+                }
+
+                const singleEditableObjSelected = selectedObjectIds.length === 1 && objects.find(obj => obj.id === selectedObjectIds[0] && ['line', 'circle', 'spline'].includes(obj.type));
+                if (editModeActive && editableObject) {
+                    editPointsBtn.style.display = 'inline-block'; editPointsBtn.disabled = false;
+                    editPointsBtn.classList.add('edit-mode-active'); editPointsBtn.textContent = "Finalizar Edición";
+                } else if (singleEditableObjSelected && currentTool === 'select') {
+                    editPointsBtn.style.display = 'inline-block'; editPointsBtn.disabled = false;
+                    editPointsBtn.textContent = "Editar Geometría";
+                } else {
+                    editPointsBtn.style.display = 'none';
+                    if (editModeActive) exitEditMode(); 
+                }
+
+                splineOptionsContainer.style.display = (currentTool === 'spline' && !editModeActive && !drawing) ? 'contents' : 'none';
+                offsetControlsContainer.style.display = (currentTool === 'offset' && !editModeActive) ? 'flex' : 'none';
+
+                if (isPanning || (isDraggingObject && !editModeActive) || (isDraggingControlPoint && editModeActive)) canvas.style.cursor = 'grabbing';
+                else if (editModeActive) canvas.style.cursor = 'default';
+                else if (currentTool === 'select') canvas.style.cursor = 'default';
+                else if (['line', 'circle', 'arc', 'spline', 'offset', 'trim', 'extend'].includes(currentTool)) canvas.style.cursor = 'crosshair';
+                else canvas.style.cursor = 'default';
+            }
+
+            function drawGrid() {
+                ctx.beginPath(); ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1 / scale;
+                const wVMin = screenToWorld(0,0); const wVMax = screenToWorld(canvas.width,canvas.height);
+                let dGridSize = GRID_SIZE;
+                if(scale<0.5)dGridSize*=2; if(scale<0.25)dGridSize*=2; if(scale>2)dGridSize/=2; if(scale>4)dGridSize/=2;
+                dGridSize = Math.max(dGridSize,1);
+                for(let x=Math.floor(wVMin.x/dGridSize)*dGridSize; x<wVMax.x; x+=dGridSize){ ctx.moveTo(x,wVMin.y);ctx.lineTo(x,wVMax.y); }
+                for(let y=Math.floor(wVMin.y/dGridSize)*dGridSize; y<wVMax.y; y+=dGridSize){ ctx.moveTo(wVMin.x,y);ctx.lineTo(wVMax.x,y); }
+                ctx.stroke();
+            }
+
+            function drawSplinePath(pathPoints, interpolationType) {
+                if (!pathPoints || pathPoints.length === 0) return;
+                ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+                if (interpolationType === 'linear') {
+                    if (pathPoints.length < 2) return;
+                    for (let i = 1; i < pathPoints.length; i++) ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+                } else if (interpolationType === 'cardinal' || interpolationType === 'catmull-rom') {
+                    if (pathPoints.length < 2) return;
+                    if (pathPoints.length === 2) { ctx.lineTo(pathPoints[1].x, pathPoints[1].y); return; }
+                    for (let i = 0; i < pathPoints.length - 1; i++) {
+                        const p0 = (i === 0) ? pathPoints[i] : pathPoints[i - 1];
+                        const p1 = pathPoints[i]; const p2 = pathPoints[i + 1];
+                        const p3 = (i === pathPoints.length - 2) ? pathPoints[i + 1] : pathPoints[i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6; const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6; const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+                    }
+                } else if (interpolationType === 'bezier') {
+                    if (pathPoints.length < 4 || (pathPoints.length - 1) % 3 !== 0) {
+                        for (let i = 1; i < pathPoints.length; i++) ctx.lineTo(pathPoints[i].x, pathPoints[i].y); return;
+                    }
+                    for (let i = 0; i < pathPoints.length - 1; i += 3) {
+                        if (pathPoints[i+3]) {
+                            ctx.bezierCurveTo(pathPoints[i+1].x, pathPoints[i+1].y, pathPoints[i+2].x, pathPoints[i+2].y, pathPoints[i+3].x, pathPoints[i+3].y);
+                        } else {
+                            for (let j = i + 1; j < pathPoints.length; j++) ctx.lineTo(pathPoints[j].x, pathPoints[j].y); break;
+                        }
+                    }
+                }
+            }
+
+            function drawAllObjects() {
+                objects.forEach(obj => {
+                    const isSelGeneral = selectedObjectIds.includes(obj.id) && !editModeActive && currentTool !== 'offset' && currentTool !== 'trim' && currentTool !== 'extend';
+                    const isBeingEdited = editModeActive && editableObject && obj.id === editableObject.id;
+                    const isBeingOffset = currentTool === 'offset' && objectToOffset && obj.id === objectToOffset.id;
+                    const isTrimBoundary = currentTool === 'trim' && (trimState.phase === 0 || trimState.phase === 1) && trimState.boundaries.includes(obj.id);
+                    const isObjectToTrim = currentTool === 'trim' && (trimState.phase === 2 || trimState.phase === 3) && trimState.objectToTrimId === obj.id;
+                    const isObjectToExtend = currentTool === 'extend' && extendState.objectToExtendId === obj.id;
+                    const isExtendBoundaryHovered = currentTool === 'extend' && extendState.objectToExtendId && !extendState.boundaryId && extendState.possibleExtensions.length > 0 && extendState.possibleExtensions[0].boundaryId === obj.id;
+                    const isExtendBoundarySelected = currentTool === 'extend' && extendState.boundaryId === obj.id;
+
+                    ctx.beginPath();
+                    let lW = 2; let sS = '#000000';
+
+                    if (isBeingEdited) { lW = 2; sS = '#e67e22'; } 
+                    else if (isBeingOffset) { lW = 3; sS = '#17a2b8'; } 
+                    else if (isTrimBoundary) { lW = 3; sS = '#28a745'; } 
+                    else if (isObjectToTrim) { lW = 3; sS = '#fd7e14'; } 
+                    else if (isObjectToExtend) { lW = 3; sS = '#ff8c00'; } 
+                    else if (isExtendBoundarySelected) {lW = 3; sS = '#32cd32'; } 
+                    else if (isExtendBoundaryHovered) {lW = 2.5; sS = '#90ee90';} 
+                    else if (isSelGeneral) { lW = 3; sS = '#007bff'; } 
+
+                    ctx.lineWidth = lW / scale; ctx.strokeStyle = sS;
+                    if (obj.type === 'line') { ctx.moveTo(obj.startX, obj.startY); ctx.lineTo(obj.endX, obj.endY); }
+                    else if (obj.type === 'circle') { ctx.arc(obj.centerX, obj.centerY, obj.radius, 0, Math.PI * 2); }
+                    else if (obj.type === 'arc') { 
+                        ctx.arc(obj.centerX, obj.centerY, obj.radius, obj.startAngle, obj.endAngle, !obj.clockwise); // Note: canvas uses anticlockwise
+                    }
+                    else if (obj.type === 'spline') { drawSplinePath(obj.points, obj.interpolationType); }
+                    ctx.stroke();
+
+                    if (isObjectToExtend && extendState.whichEnd) {
+                        ctx.beginPath(); ctx.fillStyle = '#ff0000'; 
+                        const endToMark = extendState.whichEnd === 'start' ? {x: obj.startX, y: obj.startY} : {x: obj.endX, y: obj.endY};
+                        ctx.arc(endToMark.x, endToMark.y, Math.max(3, CONTROL_POINT_RADIUS_SCREEN) / scale, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                });
+
+                if (currentTool === 'trim' && trimState.phase >= 2 && trimState.objectToTrimId) {
+                    ctx.fillStyle = '#dc3545'; 
+                    trimState.intersections.forEach(p => {
+                        ctx.beginPath(); ctx.arc(p.x, p.y, 4 / scale, 0, Math.PI * 2); ctx.fill();
+                    });
+                    if (trimState.previewSegment) {
+                        ctx.beginPath(); ctx.strokeStyle = '#ffc107'; ctx.lineWidth = 3 / scale;
+                        ctx.setLineDash([3/scale, 3/scale]);
+                        if (trimState.previewSegment.type === 'line') {
+                            ctx.moveTo(trimState.previewSegment.startX, trimState.previewSegment.startY);
+                            ctx.lineTo(trimState.previewSegment.endX, trimState.previewSegment.endY);
+                        }
+                        ctx.stroke(); ctx.setLineDash([]);
+                    }
+                }
+            }
+
+            function drawPreview() { 
+                if (!drawing || editModeActive || currentTool === 'offset' || currentTool === 'trim' || currentTool === 'extend') return;
+                if (currentTool === 'spline' && currentSplinePoints.length === 0 && !mousePosWorld) return;
+
+                ctx.strokeStyle = '#777777'; ctx.lineWidth = 1 / scale; ctx.setLineDash([5 / scale, 5 / scale]); ctx.beginPath();
+                if (currentTool === 'line' && startPoint) {
+                    ctx.moveTo(startPoint.x, startPoint.y); ctx.lineTo(mousePosWorld.x, mousePosWorld.y);
+                } else if (currentTool === 'circle' && startPoint) {
+                    const radius = distance(startPoint, mousePosWorld);
+                    ctx.arc(startPoint.x, startPoint.y, radius, 0, Math.PI * 2);
+                } else if (currentTool === 'arc') {
+                    if (startPoint && !arcMidPoint) { // Previewing line to midPoint
+                        ctx.moveTo(startPoint.x, startPoint.y);
+                        ctx.lineTo(mousePosWorld.x, mousePosWorld.y);
+                        ctx.stroke(); 
+                        ctx.beginPath(); 
+                        ctx.arc(startPoint.x, startPoint.y, 2 / scale, 0, Math.PI * 2);
+                        ctx.fillStyle = '#777777'; ctx.fill(); 
+                        ctx.setLineDash([]); return; 
+                    } else if (startPoint && arcMidPoint) { // Previewing full arc to endPoint (mousePosWorld)
+                        const arcParams = calculateArcParameters(startPoint, arcMidPoint, mousePosWorld);
+                        if (arcParams) {
+                            ctx.arc(arcParams.centerX, arcParams.centerY, arcParams.radius,
+                                   arcParams.startAngle, arcParams.endAngle, !arcParams.clockwise); // Note: canvas uses anticlockwise
+                        } else { 
+                            ctx.moveTo(startPoint.x, startPoint.y);
+                            ctx.lineTo(arcMidPoint.x, arcMidPoint.y);
+                            ctx.lineTo(mousePosWorld.x, mousePosWorld.y);
+                        }
+                        ctx.stroke(); 
+                        ctx.beginPath(); 
+                        ctx.arc(startPoint.x, startPoint.y, 2 / scale, 0, Math.PI * 2);
+                        ctx.arc(arcMidPoint.x, arcMidPoint.y, 2 / scale, 0, Math.PI * 2);
+                        ctx.fillStyle = '#777777'; ctx.fill(); 
+                        ctx.setLineDash([]); return; 
+                    } else if (startPoint) { // Only start point defined, show a dot
+                        ctx.arc(startPoint.x, startPoint.y, 2/scale, 0, Math.PI * 2);
+                        ctx.fillStyle = '#777777'; ctx.fill();
+                        ctx.setLineDash([]); return;
+                    }
+                } else if (currentTool === 'spline') {
+                    if (currentSplinePoints.length === 0) {
+                        if (mousePosWorld) { ctx.arc(mousePosWorld.x, mousePosWorld.y, 2 / scale, 0, Math.PI * 2); }
+                    } else {
+                        const previewPoints = [...currentSplinePoints, mousePosWorld];
+                        if (currentSplineInterpolation === 'bezier') { 
+                            ctx.moveTo(currentSplinePoints[0].x, currentSplinePoints[0].y);
+                            for (let i = 1; i < currentSplinePoints.length; i++) ctx.lineTo(currentSplinePoints[i].x, currentSplinePoints[i].y);
+                            if (mousePosWorld) ctx.lineTo(mousePosWorld.x, mousePosWorld.y);
+                        } else { 
+                            drawSplinePath(previewPoints, currentSplineInterpolation);
+                        }
+                    }
+                }
+                ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            function drawOffsetPreviewInternal() {
+                if (currentTool !== 'offset' || !objectToOffset || offsetPreviewObjects.length === 0) return;
+                ctx.save(); ctx.strokeStyle = "#28a745"; ctx.lineWidth = 1.5 / scale;
+                ctx.setLineDash([4 / scale, 4 / scale]);
+                offsetPreviewObjects.forEach(previewObj => {
+                    if (!previewObj) return;
+                    ctx.beginPath();
+                    if (previewObj.type === "line") { ctx.moveTo(previewObj.startX, previewObj.startY); ctx.lineTo(previewObj.endX, previewObj.endY); }
+                    else if (previewObj.type === "circle") { ctx.arc(previewObj.centerX, previewObj.centerY, previewObj.radius, 0, Math.PI * 2); }
+                    ctx.stroke();
+                });
+                ctx.setLineDash([]); ctx.restore();
+            }
+
+            function drawExtendPreview() {
+                if (currentTool !== 'extend' || !extendState.objectToExtendId || !extendState.previewPoint) return;
+                const obj = objects.find(o => o.id === extendState.objectToExtendId);
+                if (obj && obj.type === 'line') {
+                    ctx.beginPath(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2 / scale;
+                    ctx.setLineDash([4 / scale, 4 / scale]);
+                    const originalPoint = extendState.whichEnd === 'start' ? {x: obj.startX, y: obj.startY} : {x: obj.endX, y: obj.endY};
+                    ctx.moveTo(originalPoint.x, originalPoint.y); ctx.lineTo(extendState.previewPoint.x, extendState.previewPoint.y);
+                    ctx.stroke(); ctx.setLineDash([]);
+                }
+            }
+
+            function drawControlPointHandles() {
+                if (!editModeActive || !editableObject || !controlPointHandles) return;
+                controlPointHandles.forEach(h => {
+                    const sPos = worldToScreen(h.x, h.y); ctx.beginPath();
+                    ctx.arc(sPos.x, sPos.y, CONTROL_POINT_RADIUS_SCREEN, 0, Math.PI * 2);
+                    let fC = '#007bff'; let sC = '#ffffff'; let lW = 1;
+                    if (h.role === 'cp1' || h.role === 'cp2') fC = '#28a745';
+                    else if (h.role === 'center') fC = '#6f42c1';
+                    else if (h.role === 'radius') fC = '#17a2b8';
+                    if (h.selected) { fC = '#fd7e14'; sC = '#333333'; lW = 2; }
+                    ctx.fillStyle = fC; ctx.fill(); ctx.strokeStyle = sC; ctx.lineWidth = lW; ctx.stroke();
+                });
+            }
+
+            function redrawCanvas() {
+                ctx.save(); ctx.clearRect(0,0,canvas.width,canvas.height);
+                ctx.translate(offsetCanvas.x,offsetCanvas.y); ctx.scale(scale,scale);
+                drawGrid();
+                drawAllObjects();
+                drawPreview(); 
+                drawOffsetPreviewInternal();
+                drawExtendPreview(); 
+                ctx.restore(); 
+
+                showSnapIndicator(); 
+                drawControlPointHandles(); 
+            }
+
+            function distanceToSegment(p,v,w) { return distance(p, getNearestPointOnLineSegment(p,v,w));}
+            
+            function distanceToCurve(p, cPts, iType) {
+                const worldHitTol = HIT_TOLERANCE_SCREEN / scale;
+                if (!cPts || cPts.length < 2) return Infinity;
+                if (iType === 'linear') {
+                     for (let j = 0; j < cPts.length - 1; j++) {
+                        if (distanceToSegment(p, cPts[j], cPts[j+1]) < worldHitTol) return 0; 
+                    } return Infinity;
+                }
+                const numSegApprox = 20; let minDist = Infinity;
+                if (iType === 'cardinal' || iType === 'catmull-rom') {
+                    if (cPts.length === 2) return distanceToSegment(p, cPts[0], cPts[1]);
+                    for (let i = 0; i < cPts.length - 1; i++) {
+                        const p0 = (i === 0) ? cPts[i] : cPts[i - 1]; const p1 = cPts[i];
+                        const p2 = cPts[i + 1]; const p3 = (i === cPts.length - 2) ? cPts[i + 1] : cPts[i + 2];
+                        const cp1x = p1.x + (p2.x - p0.x) / 6; const cp1y = p1.y + (p2.y - p0.y) / 6;
+                        const cp2x = p2.x - (p3.x - p1.x) / 6; const cp2y = p2.y - (p3.y - p1.y) / 6;
+                        let prevPt = p1;
+                        for (let k = 1; k <= numSegApprox; k++) {
+                            const t = k / numSegApprox; const t_1 = 1 - t;
+                            const B0 = t_1*t_1*t_1; const B1 = 3*t*t_1*t_1; const B2 = 3*t*t*t_1; const B3 = t*t*t;
+                            const cPtVal = { x: B0*p1.x + B1*cp1x + B2*cp2x + B3*p2.x, y: B0*p1.y + B1*cp1y + B2*cp2y + B3*p2.y };
+                            minDist = Math.min(minDist, distanceToSegment(p, prevPt, cPtVal)); if (minDist < worldHitTol) return minDist;
+                            prevPt = cPtVal;
+                        }
+                    }
+                } else if (iType === 'bezier') {
+                    if (cPts.length < 4 || (cPts.length - 1) % 3 !== 0) return Infinity; 
+                    for (let i = 0; i < cPts.length - 1; i += 3) {
+                        const p1 = cPts[i]; const cp1 = cPts[i+1]; const cp2 = cPts[i+2]; const p2 = cPts[i+3];
+                        if (!p2) break; 
+                        let prevPt = p1;
+                        for (let k = 1; k <= numSegApprox; k++) {
+                            const t = k / numSegApprox; const t_1 = 1-t;
+                            const B0=t_1*t_1*t_1; const B1=3*t*t_1*t_1; const B2=3*t*t*t_1; const B3=t*t*t;
+                            const cPtVal = { x: B0*p1.x + B1*cp1.x + B2*cp2.x + B3*p2.x, y: B0*p1.y + B1*cp1.y + B2*cp2.y + B3*p2.y };
+                            minDist = Math.min(minDist, distanceToSegment(p, prevPt, cPtVal)); if (minDist < worldHitTol) return minDist;
+                            prevPt = cPtVal;
+                        }
+                    }
+                } return minDist;
+            }
+
+            function distanceToArc(p, arc) {
+                const dx_center = p.x - arc.centerX;
+                const dy_center = p.y - arc.centerY;
+                const distToCenter = Math.hypot(dx_center, dy_center);
+                
+                let angleToPoint = Math.atan2(dy_center, dx_center);
+
+                let sAngle = arc.startAngle;
+                let eAngle = arc.endAngle;
+                let arcIsClockwise = arc.clockwise; 
+
+                const normalize = (angle) => {
+                    angle = angle % (2 * Math.PI);
+                    if (angle < 0) angle += (2 * Math.PI);
+                    return angle;
+                };
+                sAngle = normalize(sAngle);
+                eAngle = normalize(eAngle);
+                angleToPoint = normalize(angleToPoint);
+
+                let angleInArc = false;
+                const epsilon = 1e-5; 
+
+                if (!arcIsClockwise) { 
+                    if (sAngle < eAngle) { 
+                        angleInArc = angleToPoint >= sAngle - epsilon && angleToPoint <= eAngle + epsilon;
+                    } else { 
+                        angleInArc = (angleToPoint >= sAngle - epsilon || angleToPoint <= eAngle + epsilon);
+                    }
+                } else { 
+                    if (sAngle > eAngle) { 
+                        angleInArc = angleToPoint <= sAngle + epsilon && angleToPoint >= eAngle - epsilon;
+                    } else { 
+                        angleInArc = (angleToPoint <= sAngle + epsilon || angleToPoint >= eAngle - epsilon);
+                    }
+                }
+                
+                let angularSpan = arcIsClockwise ? sAngle - eAngle : eAngle - sAngle;
+                if (angularSpan < 0) angularSpan += 2 * Math.PI; 
+                if (angularSpan < epsilon) angleInArc = true; // Treat as point-like arc, rely on radius proximity if angle is too small
+
+                if (angleInArc) {
+                    return Math.abs(distToCenter - arc.radius);
+                } else {
+                    const startArcPoint = { x: arc.centerX + arc.radius * Math.cos(arc.startAngle), y: arc.centerY + arc.radius * Math.sin(arc.startAngle) };
+                    const endArcPoint   = { x: arc.centerX + arc.radius * Math.cos(arc.endAngle),   y: arc.centerY + arc.radius * Math.sin(arc.endAngle)   };
+                    const distToStart = distance(p, startArcPoint);
+                    const distToEnd   = distance(p, endArcPoint);
+                    return Math.min(distToStart, distToEnd);
+                }
+            }
+
+            function getObjectAtPosition(wp) {
+                if (editModeActive) return null;
+                const wHT = HIT_TOLERANCE_SCREEN / scale;
+                for (let i = objects.length - 1; i >= 0; i--) {
+                    const obj = objects[i];
+                    if (obj.isPreview) continue; 
+                    if (obj.type === 'line') { if (distanceToSegment(wp, {x:obj.startX,y:obj.startY},{x:obj.endX,y:obj.endY}) < wHT) return obj; }
+                    else if (obj.type === 'circle') { const dTC = distance(wp, {x:obj.centerX,y:obj.centerY}); if (Math.abs(dTC-obj.radius) < wHT) return obj; }
+                    else if (obj.type === 'arc') { 
+                         if (distanceToArc(wp, obj) < wHT) return obj;
+                    }
+                    else if (obj.type === 'spline') { if (distanceToCurve(wp, obj.points, obj.interpolationType) < wHT) return obj; }
+                } return null;
+            }
+            
+            function getControlPointHandleAtPosition(wp) {
+                if (!editModeActive || !controlPointHandles || !controlPointHandles.length) return null;
+                const sMp = worldToScreen(wp.x, wp.y);
+                for (let i = controlPointHandles.length - 1; i >= 0; i--) {
+                    const h = controlPointHandles[i]; const hSp = worldToScreen(h.x, h.y);
+                    const d = distance(sMp, hSp); 
+                    if (d <= CONTROL_POINT_RADIUS_SCREEN + (HIT_TOLERANCE_SCREEN / 2)) return h;
+                } return null;
+            }
+
+            function enterEditMode(objectToEdit) { 
+                if (!objectToEdit || !['line', 'circle', 'spline'].includes(objectToEdit.type)) return;
+                exitAllToolModes(); 
+                editModeActive = true;
+                editableObject = objectToEdit;
+                currentTool = `edit_points_active_${objectToEdit.type}`;
+                controlPointHandles = [];
+
+                if (objectToEdit.type === 'line') {
+                    controlPointHandles.push({ x: objectToEdit.startX, y: objectToEdit.startY, role: 'start', originalIndex: 0, selected: false });
+                    controlPointHandles.push({ x: objectToEdit.endX,   y: objectToEdit.endY,   role: 'end',   originalIndex: 1, selected: false });
+                } else if (objectToEdit.type === 'circle') {
+                    controlPointHandles.push({ x: objectToEdit.centerX, y: objectToEdit.centerY, role: 'center', originalIndex: 0, selected: false });
+                    const radiusHandleX = objectToEdit.centerX + objectToEdit.radius;
+                    const radiusHandleY = objectToEdit.centerY;
+                    controlPointHandles.push({ x: radiusHandleX, y: radiusHandleY, role: 'radius', originalIndex: 1, selected: false });
+                } else if (objectToEdit.type === 'spline') {
+                    objectToEdit.points.forEach((p, idx) => {
+                        let role = 'anchor'; 
+                        if (objectToEdit.interpolationType === 'bezier') {
+                            if (idx % 3 === 0) role = 'anchor';
+                            else if ((idx - 1) % 3 === 0) role = 'cp1'; 
+                            else if ((idx - 2) % 3 === 0) role = 'cp2'; 
+                        }
+                        controlPointHandles.push({ x: p.x, y: p.y, originalIndex: idx, role: role, selected: false });
+                    });
+                }
+                selectedObjectIds = [objectToEdit.id]; 
+                updateToolStatusAndCursor(); redrawCanvas();
+            }
+            function exitEditMode() { 
+                if (!editModeActive) return;
+                editModeActive = false; editableObject = null; currentSnap = null;
+                if (controlPointHandles) controlPointHandles.forEach(h => h.selected = false);
+                controlPointHandles = []; isDraggingControlPoint = false; dragStartHandlePositions.clear();
+                if (currentTool.startsWith('edit_points_active')) {
+                    currentTool = 'select';
+                }
+                updateToolStatusAndCursor(); redrawCanvas();
+            }
+            function getPerpendicularVector(startX, startY, endX, endY, sideFactor = 1) { 
+                const dx = endX - startX;
+                const dy = endY - startY;
+                const length = Math.hypot(dx, dy);
+                if (length === 0) return { x: 0, y: 0 };
+                return {
+                    x: sideFactor * (-dy / length),
+                    y: sideFactor * (dx / length)
+                };
+            }
+            function calculateOffsetForObject(obj, distanceVal, singleSide) { 
+                if (obj.type === "line") {
+                    const sideFactor = singleSide === "left" ? 1 : -1;
+                    const perp = getPerpendicularVector(obj.startX, obj.startY, obj.endX, obj.endY, sideFactor);
+                    return {
+                        type: "line",
+                        startX: obj.startX + perp.x * distanceVal,
+                        startY: obj.startY + perp.y * distanceVal,
+                        endX: obj.endX + perp.x * distanceVal,
+                        endY: obj.endY + perp.y * distanceVal,
+                    };
+                } else if (obj.type === "circle") {
+                    const radiusChange = singleSide === "left" ? distanceVal : -distanceVal; 
+                    const newRadius = Math.max(0.1 / scale, obj.radius + radiusChange); 
+                    return {
+                        type: "circle",
+                        centerX: obj.centerX,
+                        centerY: obj.centerY,
+                        radius: newRadius
+                    };
+                }
+                // Offset for Arcs and Splines is not implemented
+                console.warn(`Offset para ${obj.type} aún no implementado.`);
+                return null;
+            }
+            function updateOffsetPreview() { 
+                if (!objectToOffset) {
+                    offsetPreviewObjects = []; redrawCanvas(); return;
+                }
+                const distanceVal = parseFloat(offsetDistanceInput.value);
+                if (isNaN(distanceVal) || distanceVal <= 0) { 
+                    offsetPreviewObjects = []; redrawCanvas(); return;
+                }
+                offsetPreviewObjects = [];
+                if (offsetSide === "left" || offsetSide === "right") {
+                    const preview = calculateOffsetForObject(objectToOffset, distanceVal, offsetSide);
+                    if (preview) offsetPreviewObjects.push(preview);
+                } else if (offsetSide === "both") {
+                    const previewLeft = calculateOffsetForObject(objectToOffset, distanceVal, "left");
+                    const previewRight = calculateOffsetForObject(objectToOffset, distanceVal, "right");
+                    if (previewLeft) offsetPreviewObjects.push(previewLeft);
+                    if (previewRight) offsetPreviewObjects.push(previewRight);
+                }
+                redrawCanvas();
+            }
+            function applyCurrentOffset() { 
+                if (offsetPreviewObjects.length > 0) {
+                    offsetPreviewObjects.forEach(preview => {
+                        if (preview) { 
+                            objects.push({ ...preview, id: getNewObjectId() });
+                        }
+                    });
+                    selectedObjectIds = []; objectToOffset = null; offsetPreviewObjects = [];
+                }
+                redrawCanvas(); updateToolStatusAndCursor(); 
+            }
+            function setOffsetSideUI(side) { 
+                offsetSide = side;
+                offsetLeftBtn.classList.toggle("active", side === "left");
+                offsetRightBtn.classList.toggle("active", side === "right");
+                offsetBothBtn.classList.toggle("active", side === "both");
+                if (objectToOffset) updateOffsetPreview(); 
+                updateToolStatusAndCursor();
+            }
+            function resetTrimState() { 
+                trimState.phase = 0; trimState.boundaries = []; trimState.objectToTrimId = null;
+                trimState.intersections = []; trimState.previewSegment = null; currentSnap = null;
+            }
+            function lineLineIntersection(lineObj1, lineObj2, forTrimSegmentCheck = true) { 
+                const x1 = lineObj1.startX, y1 = lineObj1.startY, x2 = lineObj1.endX, y2 = lineObj1.endY;
+                const x3 = lineObj2.startX, y3 = lineObj2.startY, x4 = lineObj2.endX, y4 = lineObj2.endY;
+                const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                if (den === 0) return null;
+                const tNum = (x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4);
+                const uNum = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3));
+                const t = tNum / den; const u = uNum / den;
+
+                if (forTrimSegmentCheck) { 
+                     if (t >= -1e-9 && t <= 1.0 + 1e-9 && u >= -1e-9 && u <= 1.0 + 1e-9) {
+                        return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+                    }
+                } else { 
+                     return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1), t: t, u: u };
+                }
+                return null;
+            }
+            function calculateTrimIntersections() { 
+                if (!trimState.objectToTrimId || trimState.boundaries.length === 0) return;
+                const objToTrim = objects.find(o => o.id === trimState.objectToTrimId);
+                if (!objToTrim || objToTrim.type !== 'line') { 
+                    trimState.intersections = []; return;
+                }
+                trimState.intersections = [];
+                trimState.boundaries.forEach(boundaryId => {
+                    const boundaryObj = objects.find(o => o.id === boundaryId);
+                    if (boundaryObj && boundaryObj.id !== objToTrim.id && boundaryObj.type === 'line') {
+                        const intersect = lineLineIntersection(objToTrim, boundaryObj, true); 
+                        if (intersect) trimState.intersections.push(intersect);
+                    }
+                });
+                if (objToTrim.type === 'line' && trimState.intersections.length > 0) {
+                    trimState.intersections.sort((a, b) => distance(a, {x:objToTrim.startX, y:objToTrim.startY}) - distance(b, {x:objToTrim.startX, y:objToTrim.startY}));
+                }
+            }
+            function getTrimPreviewSegment(mouseWPos) { 
+                if (!trimState.objectToTrimId || trimState.intersections.length === 0) return null;
+                const objToTrim = objects.find(o => o.id === trimState.objectToTrimId);
+                if (!objToTrim || objToTrim.type !== 'line') return null;
+
+                let closestSegment = null; let minDistToMouse = Infinity;
+                const worldHitTol = HIT_TOLERANCE_SCREEN / scale;
+                const segments = [];
+                let currentStart = {x: objToTrim.startX, y: objToTrim.startY};
+                for (const intersect of trimState.intersections) {
+                    segments.push({ type: 'line', startX: currentStart.x, startY: currentStart.y, endX: intersect.x, endY: intersect.y});
+                    currentStart = intersect;
+                }
+                segments.push({ type: 'line', startX: currentStart.x, startY: currentStart.y, endX: objToTrim.endX, endY: objToTrim.endY});
+
+                segments.forEach((seg, index) => {
+                    if (distance({x:seg.startX,y:seg.startY}, {x:seg.endX,y:seg.endY}) < 1e-6 / scale) return;
+                    const distVal = distanceToSegment(mouseWPos, {x: seg.startX, y: seg.startY}, {x: seg.endX, y: seg.endY});
+                    if (distVal < minDistToMouse) {
+                        minDistToMouse = distVal;
+                        closestSegment = { ...seg, part: index }; 
+                    }
+                });
+                if (minDistToMouse > worldHitTol * 2) return null; 
+                return closestSegment;
+            }
+            function applyActualTrim() { 
+                if (!trimState.objectToTrimId || !trimState.previewSegment) return;
+                const objIndex = objects.findIndex(o => o.id === trimState.objectToTrimId);
+                if (objIndex === -1) return;
+                const objToModify = objects[objIndex];
+                const partToRemove = trimState.previewSegment;
+
+                if (objToModify.type === 'line') {
+                    const segLengthThreshold = 1e-6 / scale;
+                    if (distance(partToRemove, {x:objToModify.startX, y:objToModify.startY}) < segLengthThreshold &&
+                        distance({x:partToRemove.endX, y:partToRemove.endY}, {x:objToModify.endX, y:objToModify.endY}) < segLengthThreshold) {
+                        objects.splice(objIndex, 1);
+                    }
+                    else if (distance(partToRemove, {x:objToModify.startX, y:objToModify.startY}) < segLengthThreshold) {
+                        objToModify.startX = partToRemove.endX; objToModify.startY = partToRemove.endY;
+                    }
+                    else if (distance({x:partToRemove.endX, y:partToRemove.endY}, {x:objToModify.endX, y:objToModify.endY}) < segLengthThreshold) {
+                        objToModify.endX = partToRemove.startX; objToModify.endY = partToRemove.startY;
+                    }
+                    else {
+                        const originalEnd = {x: objToModify.endX, y: objToModify.endY};
+                        objToModify.endX = partToRemove.startX; objToModify.endY = partToRemove.startY;
+                        objects.push({ 
+                            id: getNewObjectId(), type: 'line',
+                            startX: partToRemove.endX, startY: partToRemove.endY,
+                            endX: originalEnd.x, endY: originalEnd.y
+                        });
+                    }
+                    if (distance({x:objToModify.startX, y:objToModify.startY}, {x:objToModify.endX, y:objToModify.endY}) < segLengthThreshold) {
+                        objects.splice(objIndex, 1); 
+                    }
+                }
+                resetTrimState(); setTool('trim'); 
+                if (trimState.objectToTrimId && objects.find(o => o.id === trimState.objectToTrimId)) {
+                    calculateTrimIntersections();
+                } else { 
+                    trimState.phase = (trimState.boundaries.length > 0) ? 2 : 0; 
+                }
+                redrawCanvas(); updateToolStatusAndCursor();
+            }
+            function resetExtendState() { 
+                extendState = { objectToExtendId: null, boundaryId: null, whichEnd: null, previewPoint: null, possibleExtensions: [] };
+                currentSnap = null;
+            }
+            function getClosestLineEnd(line, point) { 
+                const distToStart = distance({ x: line.startX, y: line.startY }, point);
+                const distToEnd = distance({ x: line.endX, y: line.endY }, point);
+                if (Math.abs(distToStart - distToEnd) < (HIT_TOLERANCE_SCREEN / scale)) { 
+                     const lineVector = {x: line.endX - line.startX, y: line.endY - line.startY};
+                     const pointVector = {x: point.x - line.startX, y: point.y - line.startY};
+                     const dotProduct = lineVector.x * pointVector.x + lineVector.y * pointVector.y;
+                     return dotProduct > (Math.hypot(lineVector.x, lineVector.y)**2 / 2) ? 'end' : 'start';
+                }
+                return distToStart < distToEnd ? 'start' : 'end';
+            }
+            function getLineCircleIntersections(lineStart, lineEnd, circle) { 
+                const cx = circle.centerX; const cy = circle.centerY; const r = circle.radius;
+                const x1 = lineStart.x, y1 = lineStart.y; const x2 = lineEnd.x, y2 = lineEnd.y; 
+                const dx = x2 - x1; const dy = y2 - y1;
+                const A = dx * dx + dy * dy;
+                const B = 2 * (dx * (x1 - cx) + dy * (y1 - cy));
+                const C = (x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy) - r * r;
+                const det = B * B - 4 * A * C;
+                if (A <= 1e-9 || det < -1e-9) { return []; } 
+                else {
+                    const results = [];
+                    if (Math.abs(det) < 1e-9) { 
+                        const t = -B / (2 * A); results.push({ x: x1 + t * dx, y: y1 + t * dy, t: t });
+                    } else { 
+                        const t1 = (-B + Math.sqrt(det)) / (2 * A); const t2 = (-B - Math.sqrt(det)) / (2 * A);
+                        results.push({ x: x1 + t1 * dx, y: y1 + t1 * dy, t: t1 });
+                        results.push({ x: x1 + t2 * dx, y: y1 + t2 * dy, t: t2 });
+                    }
+                    return results;
+                }
+            }
+            function calculatePossibleExtensions() { 
+                extendState.possibleExtensions = [];
+                if (!extendState.objectToExtendId || !extendState.whichEnd) return;
+                const targetLine = objects.find(o => o.id === extendState.objectToExtendId);
+                if (!targetLine || targetLine.type !== 'line') return;
+
+                let p0, dirVect; 
+                if (extendState.whichEnd === 'start') {
+                    p0 = { x: targetLine.startX, y: targetLine.startY };
+                    dirVect = { x: targetLine.startX - targetLine.endX, y: targetLine.startY - targetLine.endY };
+                } else {
+                    p0 = { x: targetLine.endX, y: targetLine.endY };
+                    dirVect = { x: targetLine.endX - targetLine.startX, y: targetLine.endY - targetLine.startY };
+                }
+                const lenDir = Math.hypot(dirVect.x, dirVect.y);
+                if (lenDir < 1e-9) return; 
+                const p1Ray = { x: p0.x + dirVect.x / lenDir * 1000000, y: p0.y + dirVect.y / lenDir * 1000000 }; 
+                const lineToExtendRay = { startX: p0.x, startY: p0.y, endX: p1Ray.x, endY: p1Ray.y };
+
+                objects.forEach(boundaryObj => {
+                    if (boundaryObj.id === targetLine.id || boundaryObj.isPreview) return; 
+                    if (boundaryObj.type === 'line') {
+                        const intersect = lineLineIntersection(lineToExtendRay, boundaryObj, false); 
+                        if (intersect && intersect.t > 1e-9 && intersect.u >= -1e-9 && intersect.u <= 1.0 + 1e-9) { 
+                             extendState.possibleExtensions.push({
+                                boundaryId: boundaryObj.id, point: { x: intersect.x, y: intersect.y },
+                                distance: distance(p0, {x: intersect.x, y: intersect.y})
+                            });
+                        }
+                    } else if (boundaryObj.type === 'circle') {
+                        const intersects = getLineCircleIntersections(p0, p1Ray, boundaryObj);
+                        intersects.forEach(intersect => {
+                            if (intersect.t > 1e-9) { 
+                                extendState.possibleExtensions.push({
+                                    boundaryId: boundaryObj.id, point: { x: intersect.x, y: intersect.y },
+                                    distance: distance(p0, {x: intersect.x, y: intersect.y})
+                                });
+                            }
+                        });
+                    }
+                });
+                extendState.possibleExtensions.sort((a,b) => a.distance - b.distance);
+            }
+            function updateExtendPreview() { 
+                if (!extendState.objectToExtendId || !extendState.whichEnd) {
+                    extendState.previewPoint = null; redrawCanvas(); return;
+                }
+                calculatePossibleExtensions();
+                if (extendState.boundaryId) { 
+                    const specificExt = extendState.possibleExtensions.find(ext => ext.boundaryId === extendState.boundaryId);
+                    extendState.previewPoint = specificExt ? specificExt.point : null;
+                } else if (extendState.possibleExtensions.length > 0) { 
+                    extendState.previewPoint = extendState.possibleExtensions[0].point;
+                } else {
+                    extendState.previewPoint = null; 
+                }
+                redrawCanvas(); 
+            }
+            function applyActualExtend() { 
+                if (!extendState.objectToExtendId || !extendState.whichEnd || !extendState.previewPoint) return;
+                const targetObj = objects.find(o => o.id === extendState.objectToExtendId);
+                if (!targetObj || targetObj.type !== 'line') return;
+
+                if (extendState.whichEnd === 'start') { targetObj.startX = extendState.previewPoint.x; targetObj.startY = extendState.previewPoint.y; }
+                else { targetObj.endX = extendState.previewPoint.x; targetObj.endY = extendState.previewPoint.y; }
+                setTool('extend'); redrawCanvas(); updateToolStatusAndCursor();
+            }
+
+            function exitAllToolModes(exceptTool = null) {
+                if (editModeActive && exceptTool !== 'edit') exitEditMode();
+                if (drawing && exceptTool !== 'drawing') { 
+                    if (currentTool === 'spline') cancelSplineDrawing();
+                    else if (currentTool === 'arc') { 
+                        drawing = false; startPoint = null; arcMidPoint = null;
+                    }
+                    else { drawing = false; startPoint = null; }
+                }
+                if (objectToOffset && exceptTool !== 'offset') { objectToOffset = null; offsetPreviewObjects = []; }
+                if ((trimState.phase > 0 || trimState.objectToTrimId) && exceptTool !== 'trim') resetTrimState();
+                if (extendState.objectToExtendId && exceptTool !== 'extend') resetExtendState();
+                isDraggingObject = false; isDraggingControlPoint = false; currentSnap = null;
+            }
+
+            canvas.addEventListener('wheel', (e) => { 
+                e.preventDefault(); 
+                const r = canvas.getBoundingClientRect();
+                const sX = e.clientX - r.left; const sY = e.clientY - r.top;
+                const wPMB = screenToWorld(sX,sY); 
+                const zF = e.deltaY < 0 ? 1.1 : 1/1.1; 
+                const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * zF));
+                if (newScale === scale) return;
+                scale = newScale;
+                const wPMA = screenToWorld(sX,sY); 
+                offsetCanvas.x += (wPMA.x - wPMB.x) * scale;
+                offsetCanvas.y += (wPMA.y - wPMB.y) * scale;
+                redrawCanvas(); 
+            });
+
+            canvas.addEventListener('mousedown', (event) => {
+                 const rawMousePosWorld = screenToWorld(event.clientX - canvas.getBoundingClientRect().left, event.clientY - canvas.getBoundingClientRect().top);
+                 mousePosWorld = getMouseWorldPositionWithAids(event); 
+                 
+                 if (event.button === 1) { 
+                    isPanning = true;
+                    const r = canvas.getBoundingClientRect();
+                    panStartMousePos_Screen = {x:event.clientX-r.left,y:event.clientY-r.top};
+                    event.preventDefault();
+                 } else if (event.button === 0) { 
+                    if (editModeActive) {
+                        const cH = getControlPointHandleAtPosition(rawMousePosWorld);
+                        if (cH) {
+                            if (!event.ctrlKey && !event.metaKey) controlPointHandles.forEach(h => h.selected = (h === cH));
+                            else cH.selected = !cH.selected;
+                            isDraggingControlPoint = true; 
+                            dragStartMousePos_World = getMouseWorldPositionWithAids(event); 
+                            dragStartHandlePositions.clear();
+                            controlPointHandles.forEach(h => { if (h.selected) dragStartHandlePositions.set(h.originalIndex, {x:h.x,y:h.y}); });
+                        } else controlPointHandles.forEach(h => h.selected = false); 
+                    } else if (currentTool === 'offset') {
+                        const clickedObjectForOffset = getObjectAtPosition(rawMousePosWorld);
+                        if (clickedObjectForOffset) {
+                            if (objectToOffset && objectToOffset.id === clickedObjectForOffset.id) applyCurrentOffset(); 
+                            else { objectToOffset = clickedObjectForOffset; selectedObjectIds = [objectToOffset.id]; updateOffsetPreview(); }
+                        } else {
+                             if (objectToOffset && offsetPreviewObjects.length > 0) applyCurrentOffset(); 
+                             else { objectToOffset = null; offsetPreviewObjects = []; selectedObjectIds = []; }
+                        }
+                    } else if (currentTool === 'trim') {
+                        const clickedTrimObject = getObjectAtPosition(rawMousePosWorld);
+                        if (trimState.phase === 0 || trimState.phase === 1) { 
+                            if (clickedTrimObject) {
+                                const index = trimState.boundaries.indexOf(clickedTrimObject.id);
+                                if (index > -1) trimState.boundaries.splice(index, 1); else trimState.boundaries.push(clickedTrimObject.id);
+                                selectedObjectIds = [...trimState.boundaries]; trimState.phase = 1;
+                            }
+                        } else if (trimState.phase === 2) { 
+                            if (clickedTrimObject && !trimState.boundaries.includes(clickedTrimObject.id)) {
+                                trimState.objectToTrimId = clickedTrimObject.id; selectedObjectIds = [clickedTrimObject.id, ...trimState.boundaries];
+                                calculateTrimIntersections(); trimState.phase = 3;
+                            }
+                        } else if (trimState.phase === 3) { if (trimState.previewSegment) applyActualTrim(); }
+                    } else if (currentTool === 'extend') {
+                        const clickedExtendObject = getObjectAtPosition(rawMousePosWorld);
+                        if (!extendState.objectToExtendId) { 
+                            if (clickedExtendObject && clickedExtendObject.type === 'line') {
+                                extendState.objectToExtendId = clickedExtendObject.id;
+                                extendState.whichEnd = getClosestLineEnd(clickedExtendObject, rawMousePosWorld);
+                                selectedObjectIds = [clickedExtendObject.id]; updateExtendPreview();
+                            }
+                        } else { 
+                            if (clickedExtendObject && clickedExtendObject.id !== extendState.objectToExtendId) {
+                                extendState.boundaryId = clickedExtendObject.id; updateExtendPreview(); 
+                                if (extendState.previewPoint) applyActualExtend();
+                                else { extendState.boundaryId = null; updateExtendPreview(); }
+                            } else if (extendState.previewPoint) { 
+                                if (extendState.possibleExtensions.length > 0 && distance(extendState.previewPoint, extendState.possibleExtensions[0].point) < 1e-6/scale) {
+                                    extendState.boundaryId = extendState.possibleExtensions[0].boundaryId; applyActualExtend();
+                                }
+                            }
+                        }
+                    } else if (currentTool === 'arc') {
+                        if (!drawing) { 
+                            startPoint = { ...mousePosWorld };
+                            arcMidPoint = null;
+                            drawing = true;
+                        } else if (!arcMidPoint) { 
+                            if (distance(startPoint, mousePosWorld) > 1e-6 / scale) { // Ensure mid point is not same as start
+                                arcMidPoint = { ...mousePosWorld };
+                            } else {
+                                console.warn("Punto medio del arco demasiado cerca del punto inicial.");
+                            }
+                        } else { 
+                            if (distance(arcMidPoint, mousePosWorld) > 1e-6 / scale && distance(startPoint, mousePosWorld) > 1e-6 / scale) {
+                                const arcParams = calculateArcParameters(startPoint, arcMidPoint, mousePosWorld);
+                                if (arcParams && arcParams.radius > 0.1 / scale) {
+                                    objects.push({
+                                        id: getNewObjectId(), type: 'arc',
+                                        p1: { ...startPoint }, p2: { ...arcMidPoint }, p3: { ...mousePosWorld },
+                                        centerX: arcParams.centerX, centerY: arcParams.centerY,
+                                        radius: arcParams.radius,
+                                        startAngle: arcParams.startAngle, endAngle: arcParams.endAngle,
+                                        clockwise: arcParams.clockwise 
+                                    });
+                                } else {
+                                    console.warn("No se pudo crear el arco. Puntos colineales o radio muy pequeño.");
+                                }
+                            } else {
+                                 console.warn("Punto final del arco demasiado cerca de los puntos anteriores.");
+                            }
+                            drawing = false; startPoint = null; arcMidPoint = null; currentSnap = null;
+                        }
+                    } else { 
+                        const objectForSelection = getObjectAtPosition(rawMousePosWorld);
+                        if (objectForSelection && selectedObjectIds.includes(objectForSelection.id) && currentTool === 'select') {
+                            isDraggingObject = true; 
+                            dragStartMousePos_World = getMouseWorldPositionWithAids(event);
+                            dragStartObjectPositions.clear();
+                            objects.forEach(obj => {
+                                if (selectedObjectIds.includes(obj.id)) {
+                                   if (obj.type==='line') dragStartObjectPositions.set(obj.id, {startX:obj.startX, startY:obj.startY, endX:obj.endX, endY:obj.endY});
+                                    else if (obj.type==='circle') dragStartObjectPositions.set(obj.id, {centerX:obj.centerX, centerY:obj.centerY, radius:obj.radius});
+                                    else if (obj.type==='arc') dragStartObjectPositions.set(obj.id, { 
+                                        centerX: obj.centerX, centerY: obj.centerY,
+                                        p1x: obj.p1.x, p1y: obj.p1.y, 
+                                        p2x: obj.p2.x, p2y: obj.p2.y,
+                                        p3x: obj.p3.x, p3y: obj.p3.y,
+                                        startAngle: obj.startAngle, endAngle: obj.endAngle // Keep original angles to maintain shape
+                                    });
+                                    else if (obj.type==='spline') dragStartObjectPositions.set(obj.id, {points:JSON.parse(JSON.stringify(obj.points))}); 
+                                }
+                            });
+                        } else if (objectForSelection && currentTool === 'select') { 
+                            if (event.ctrlKey || event.metaKey) { 
+                                const i = selectedObjectIds.indexOf(objectForSelection.id);
+                                if(i>-1) selectedObjectIds.splice(i,1); else selectedObjectIds.push(objectForSelection.id);
+                            } else selectedObjectIds = [objectForSelection.id]; 
+                        } else if (currentTool === 'select') { 
+                            if (!(event.ctrlKey || event.metaKey)) selectedObjectIds = [];
+                        }
+
+                        if (['line', 'circle'].includes(currentTool)) {
+                            if (!drawing) {
+                                startPoint = { ...mousePosWorld }; drawing = true; 
+                            } else {
+                                if (currentTool === 'line') {
+                                    if(distance(startPoint, mousePosWorld) > 1e-6 / scale) 
+                                        objects.push({id:getNewObjectId(),type:'line',startX:startPoint.x,startY:startPoint.y,endX:mousePosWorld.x,endY:mousePosWorld.y});
+                                } else if (currentTool === 'circle') {
+                                    const radius = distance(startPoint, mousePosWorld);
+                                    if (radius > 0.1/scale) objects.push({id:getNewObjectId(),type:'circle',centerX:startPoint.x,centerY:startPoint.y,radius:radius});
+                                }
+                                startPoint = null; drawing = false; currentSnap = null; 
+                            }
+                        } else if (currentTool === 'spline') {
+                            currentSplinePoints.push({ ...mousePosWorld }); 
+                            drawing = true;
+                        }
+                     }
+                 }
+                 redrawCanvas(); updateToolStatusAndCursor();
+            });
+
+            canvas.addEventListener('mousemove', (event) => {
+                lastKnownMouseScreenPos = {x: event.clientX - canvas.getBoundingClientRect().left, y: event.clientY - canvas.getBoundingClientRect().top};
+                const prevMousePosWorld = { ...mousePosWorld }; 
+                mousePosWorld = getMouseWorldPositionWithAids(event); 
+
+                if (isPanning) {
+                    const r = canvas.getBoundingClientRect();
+                    const cSX = event.clientX-r.left; const cSY = event.clientY-r.top;
+                    const dX = cSX - panStartMousePos_Screen.x; const dY = cSY - panStartMousePos_Screen.y;
+                    offsetCanvas.x += dX; offsetCanvas.y += dY;
+                    panStartMousePos_Screen = {x:cSX,y:cSY};
+                } else if (isDraggingControlPoint && editModeActive && editableObject && dragStartHandlePositions.size > 0) {
+                    const deltaX_world = mousePosWorld.x - dragStartMousePos_World.x; 
+                    const deltaY_world = mousePosWorld.y - dragStartMousePos_World.y;
+                    controlPointHandles.forEach(h => {
+                        if (h.selected && dragStartHandlePositions.has(h.originalIndex)) {
+                            const originalHandlePos = dragStartHandlePositions.get(h.originalIndex);
+                            const newX = originalHandlePos.x + deltaX_world; const newY = originalHandlePos.y + deltaY_world;
+                            h.x = newX; h.y = newY;
+                            if (editableObject.type === 'line') {
+                                if (h.role === 'start') { editableObject.startX = newX; editableObject.startY = newY; }
+                                else if (h.role === 'end') { editableObject.endX = newX; editableObject.endY = newY; }
+                            } else if (editableObject.type === 'circle') {
+                                if (h.role === 'center') {
+                                    editableObject.centerX = newX; editableObject.centerY = newY;
+                                    const radiusHandle = controlPointHandles.find(handle => handle.role === 'radius');
+                                    if (radiusHandle && !radiusHandle.selected) {
+                                        const originalRadiusHandlePos = dragStartHandlePositions.get(radiusHandle.originalIndex) || {x: editableObject.centerX + editableObject.radius, y: editableObject.centerY};
+                                        const originalCenterPos = dragStartHandlePositions.get(h.originalIndex); 
+                                        let angle;
+                                        if (originalCenterPos && originalRadiusHandlePos) angle = Math.atan2(originalRadiusHandlePos.y - originalCenterPos.y, originalRadiusHandlePos.x - originalCenterPos.x);
+                                        else angle = Math.atan2(radiusHandle.y - newY, radiusHandle.x - newX);
+                                        radiusHandle.x = newX + editableObject.radius * Math.cos(angle);
+                                        radiusHandle.y = newY + editableObject.radius * Math.sin(angle);
+                                    }
+                                } else if (h.role === 'radius') {
+                                    editableObject.radius = Math.max(0.1/scale, distance({x:newX,y:newY}, {x:editableObject.centerX, y:editableObject.centerY}));
+                                    const angle = Math.atan2(newY - editableObject.centerY, newX - editableObject.centerX);
+                                    h.x = editableObject.centerX + editableObject.radius * Math.cos(angle);
+                                    h.y = editableObject.centerY + editableObject.radius * Math.sin(angle);
+                                }
+                            } else if (editableObject.type === 'spline') {
+                                editableObject.points[h.originalIndex] = { x: newX, y: newY };
+                            }
+                        }
+                    });
+                } else if (isDraggingObject && !editModeActive && dragStartMousePos_World) {
+                    const dX = mousePosWorld.x - dragStartMousePos_World.x; 
+                    const dY = mousePosWorld.y - dragStartMousePos_World.y;
+                    objects.forEach(obj => {
+                        if (selectedObjectIds.includes(obj.id) && dragStartObjectPositions.has(obj.id)) {
+                            const oP = dragStartObjectPositions.get(obj.id);
+                            if(obj.type==='line'){obj.startX=oP.startX+dX;obj.startY=oP.startY+dY;obj.endX=oP.endX+dX;obj.endY=oP.endY+dY;}
+                            else if(obj.type==='circle'){obj.centerX=oP.centerX+dX;obj.centerY=oP.centerY+dY;} 
+                            else if(obj.type==='arc'){
+                                obj.centerX = oP.centerX + dX; obj.centerY = oP.centerY + dY;
+                                // Update construction points relative to the drag
+                                obj.p1.x = oP.p1x + dX; obj.p1.y = oP.p1y + dY;
+                                obj.p2.x = oP.p2x + dX; obj.p2.y = oP.p2y + dY;
+                                obj.p3.x = oP.p3x + dX; obj.p3.y = oP.p3y + dY;
+                                // Recalculate angles based on new center and original p1, p3 relative positions
+                                obj.startAngle = Math.atan2(obj.p1.y - obj.centerY, obj.p1.x - obj.centerX);
+                                obj.endAngle = Math.atan2(obj.p3.y - obj.centerY, obj.p3.x - obj.centerX);
+                            }
+                            else if(obj.type==='spline'){obj.points=oP.points.map(p=>({x:p.x+dX,y:p.y+dY}));}
+                        }
+                    });
+                } else if (currentTool === 'trim' && trimState.phase === 3 && trimState.objectToTrimId) {
+                    const rawMouseForTrimPreview = screenToWorld(event.clientX - canvas.getBoundingClientRect().left, event.clientY - canvas.getBoundingClientRect().top);
+                    trimState.previewSegment = getTrimPreviewSegment(rawMouseForTrimPreview);
+                } else if (currentTool === 'extend' && extendState.objectToExtendId && !extendState.boundaryId) {
+                    updateExtendPreview();
+                }
+
+                if (isPanning || isDraggingObject || drawing || isDraggingControlPoint ||
+                    (currentTool === 'offset' && objectToOffset) ||
+                    (currentTool === 'trim' && trimState.phase === 3) ||
+                    (currentTool === 'extend' && extendState.objectToExtendId) ||
+                    currentSnap ) { 
+                    redrawCanvas();
+                }
+                updateToolStatusAndCursor(); 
+            });
+
+            canvas.addEventListener('mouseup', (e) => {
+                if(e.button===1 && isPanning) isPanning=false;
+                if(e.button===0){
+                    if(isDraggingObject) isDraggingObject=false;
+                    if(isDraggingControlPoint) isDraggingControlPoint=false; dragStartHandlePositions.clear();
+                }
+                redrawCanvas(); updateToolStatusAndCursor();
+            });
+
+            canvas.addEventListener('mouseleave', (e) => {
+                if(isPanning) isPanning=false;
+                if(isDraggingObject && !editModeActive) isDraggingObject=false;
+                if(isDraggingControlPoint && editModeActive) { isDraggingControlPoint=false; dragStartHandlePositions.clear(); }
+                currentSnap = null; 
+                if (drawing && currentTool !== 'arc' && currentTool !== 'spline') { // Don't cancel arc/spline on mouse leave if in progress
+                     // drawing = false; startPoint = null; // No, this would cancel line/circle too early
+                }
+                redrawCanvas(); updateToolStatusAndCursor();
+            });
+
+            function resetSplineDrawingState(){currentSplinePoints=[];drawing=false; currentSnap = null;}
+            function finalizeSpline(){
+                if (currentTool !=='spline' || !drawing || editModeActive) return;
+                let isValid = false; const len = currentSplinePoints.length;
+                if (currentSplineInterpolation === 'linear' || currentSplineInterpolation === 'cardinal' || currentSplineInterpolation === 'catmull-rom') {
+                    if (len >= 2) isValid = true;
+                } else if (currentSplineInterpolation === 'bezier') {
+                    if (len >= 4 && (len - 1) % 3 === 0) isValid = true;
+                }
+                if (isValid) { objects.push({id:getNewObjectId(), type:'spline', points:JSON.parse(JSON.stringify(currentSplinePoints)), interpolationType:currentSplineInterpolation});}
+                else if (len > 0) { console.warn(`Spline (${currentSplineInterpolation}) no válida con ${len} puntos. No guardada.`); }
+                resetSplineDrawingState(); redrawCanvas(); updateToolStatusAndCursor();
+            }
+            function cancelSplineDrawing(){
+                if (currentTool !=='spline' || !drawing || editModeActive) return;
+                resetSplineDrawingState(); redrawCanvas(); updateToolStatusAndCursor();
+            }
+
+            snapToGridBtn.addEventListener('click', () => { 
+                snapToGridEnabled = !snapToGridEnabled;
+                snapToGridBtn.textContent = snapToGridEnabled ? 'Rejilla On' : 'Rejilla Off';
+                snapToGridBtn.classList.toggle('active', snapToGridEnabled);
+                currentSnap = null; redrawCanvas(); 
+            });
+            orthoModeBtn.addEventListener('click', () => { 
+                orthoModeEnabled = !orthoModeEnabled;
+                orthoModeBtn.textContent = orthoModeEnabled ? 'Orto On' : 'Orto Off';
+                orthoModeBtn.classList.toggle('active', orthoModeEnabled);
+                currentSnap = null; redrawCanvas(); 
+            });
+            
+            [refEndpointCb, refMidpointCb, refCenterCb, refQuadrantCb, refIntersectionCb, refTangentCb, refNearestCb].forEach(cb => {
+                cb.addEventListener('change', () => {
+                    currentSnap = null; 
+                    const lastMouseEvent = new MouseEvent('mousemove', { clientX: lastKnownMouseScreenPos.x + canvas.getBoundingClientRect().left, clientY: lastKnownMouseScreenPos.y + canvas.getBoundingClientRect().top });
+                    mousePosWorld = getMouseWorldPositionWithAids(lastMouseEvent);
+                    redrawCanvas();
+                });
+            });
+
+            splineInterpolationSelect.addEventListener('change', function(){ 
+                if (drawing && currentTool==='spline' && currentSplinePoints.length>0) finalizeSpline(); 
+                currentSplineInterpolation = this.value;
+                if (currentTool==='spline' && !editModeActive) redrawCanvas(); 
+                updateToolStatusAndCursor();
+            });
+            editPointsBtn.addEventListener('click', () => { 
+                currentSnap = null; 
+                if (editModeActive) exitEditMode();
+                else if (selectedObjectIds.length === 1 && currentTool === 'select') {
+                    const sO = objects.find(obj => obj.id === selectedObjectIds[0]);
+                    if (sO && ['line','circle','spline'].includes(sO.type)) enterEditMode(sO);
+                }
+            });
+
+            offsetDistanceInput.addEventListener('input', updateOffsetPreview);
+            offsetLeftBtn.addEventListener('click', () => setOffsetSideUI('left'));
+            offsetRightBtn.addEventListener('click', () => setOffsetSideUI('right'));
+            offsetBothBtn.addEventListener('click', () => setOffsetSideUI('both'));
+
+            function setTool(tN) {
+                exitAllToolModes(tN); 
+                if (currentTool === 'spline' && drawing) finalizeSpline(); 
+                else { drawing = false; startPoint = null; } 
+                currentSplinePoints = []; 
+                arcMidPoint = null; 
+                if (tN !== 'select' && !tN.startsWith('edit_points_active') && tN !== 'offset' && tN !== 'trim' && tN !== 'extend') {
+                     selectedObjectIds = [];
+                } else if (tN === 'offset' || tN === 'trim' || tN === 'extend') {
+                    selectedObjectIds = []; 
+                }
+                currentTool = tN; currentSnap = null;
+                if (tN === 'spline') currentSplineInterpolation = splineInterpolationSelect.value; 
+                updateToolStatusAndCursor(); redrawCanvas();
+            }
+
+            selectToolBtn.addEventListener('click', () => setTool('select'));
+            lineToolBtn.addEventListener('click', () => setTool('line'));
+            circleToolBtn.addEventListener('click', () => setTool('circle'));
+            arcToolBtn.addEventListener('click', () => setTool('arc'));
+            splineToolBtn.addEventListener('click', () => setTool('spline'));
+            offsetToolBtn.addEventListener('click', () => setTool('offset'));
+            trimToolBtn.addEventListener('click', () => setTool('trim'));
+            extendToolBtn.addEventListener('click', () => setTool('extend'));
+
+            clearBtn.addEventListener('click', () => { 
+                exitAllToolModes();
+                objects=[];selectedObjectIds=[];drawing=false;startPoint=null;currentSplinePoints=[];
+                arcMidPoint = null; 
+                isDraggingObject=false;isPanning=false;nextObjectId=1;
+                objectToOffset=null; offsetPreviewObjects=[];
+                resetTrimState(); resetExtendState();
+                if (editModeActive) exitEditMode(); 
+                currentSnap = null;
+                setTool('select'); redrawCanvas(); updateToolStatusAndCursor();
+            });
+
+            document.addEventListener('keydown', (e) => { 
+                if ((e.key==='Delete'||e.key==='Backspace') && !isInputFocused()) {
+                    if (editModeActive && editableObject) {
+                        objects = objects.filter(o => o.id !== editableObject.id); selectedObjectIds=[]; exitEditMode(); 
+                    } else if (selectedObjectIds.length > 0 && !editModeActive) {
+                        objects = objects.filter(o => !selectedObjectIds.includes(o.id)); selectedObjectIds = [];
+                        if (objectToOffset && !objects.find(o => o.id === objectToOffset.id)) { objectToOffset = null; offsetPreviewObjects = []; }
+                        if (trimState.objectToTrimId && !objects.find(o => o.id === trimState.objectToTrimId)) {
+                           resetTrimState(); if (currentTool === 'trim') trimState.phase = (trimState.boundaries.length > 0) ? 2 : 0;
+                        }
+                        trimState.boundaries = trimState.boundaries.filter(id => objects.some(o => o.id === id));
+                        if (currentTool === 'trim' && trimState.boundaries.length === 0 && !trimState.objectToTrimId) trimState.phase = 0;
+                        if (extendState.objectToExtendId && !objects.find(o => o.id === extendState.objectToExtendId)) resetExtendState();
+                        extendState.boundaryId = objects.some(o => o.id === extendState.boundaryId) ? extendState.boundaryId : null;
+                        if (currentTool === 'extend' && extendState.objectToExtendId) updateExtendPreview();
+                    }
+                    currentSnap = null; redrawCanvas(); updateToolStatusAndCursor();
+                }
+                if (e.key === 'Escape' && !isInputFocused()) {
+                    currentSnap = null; 
+                    if (isDraggingControlPoint) { 
+                        isDraggingControlPoint=false;
+                        // Revert logic would go here if needed, or just accept current state
+                        dragStartHandlePositions.clear();
+                    }
+                    else if (editModeActive) exitEditMode();
+                    else if (currentTool === 'offset' && objectToOffset) { objectToOffset = null; offsetPreviewObjects = []; selectedObjectIds = [];}
+                    else if (currentTool === 'trim') {
+                        if (trimState.phase === 3 || trimState.phase === 2) { 
+                            trimState.objectToTrimId = null; trimState.intersections = []; trimState.previewSegment = null;
+                            trimState.phase = (trimState.boundaries.length > 0) ? 1 : 0; 
+                            selectedObjectIds = [...trimState.boundaries];
+                        } else if (trimState.phase === 1) { resetTrimState(); selectedObjectIds = []; }
+                        else { setTool('select'); }
+                    }
+                    else if (currentTool === 'extend') {
+                        if (extendState.objectToExtendId) { resetExtendState(); selectedObjectIds = []; }
+                        else { setTool('select'); }
+                    }
+                    else if (currentTool==='spline'&&drawing) cancelSplineDrawing();
+                    else if (currentTool==='arc'&&drawing) {
+                        drawing=false; startPoint=null; arcMidPoint=null;
+                    }
+                    else if (drawing) { drawing=false; startPoint=null; }
+                    else if (isDraggingObject) { isDraggingObject = false; }
+                    else if (isPanning) isPanning = false;
+                    else if (selectedObjectIds.length > 0) selectedObjectIds = [];
+                    else setTool('select'); 
+                    redrawCanvas(); updateToolStatusAndCursor();
+                }
+                if (e.key === 'Enter' && !isInputFocused()) {
+                    if (currentTool==='spline'&&drawing&&!editModeActive) finalizeSpline();
+                    else if (editModeActive) exitEditMode();
+                    else if (currentTool === 'offset' && objectToOffset && offsetPreviewObjects.length > 0) applyCurrentOffset();
+                    else if (currentTool === 'trim' && trimState.phase === 1 && trimState.boundaries.length > 0) {
+                        trimState.phase = 2; selectedObjectIds = [...trimState.boundaries]; 
+                    }
+                     else if (currentTool === 'extend' && extendState.objectToExtendId && extendState.previewPoint && !extendState.boundaryId) {
+                        if (extendState.possibleExtensions.length > 0) {
+                            extendState.boundaryId = extendState.possibleExtensions[0].boundaryId; applyActualExtend();
+                        }
+                     }
+                    currentSnap = null; redrawCanvas(); updateToolStatusAndCursor(); 
+                }
+            });
+            
+            function isInputFocused() { return document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number'; }
+
+            splineInterpolationSelect.value = currentSplineInterpolation;
+            setOffsetSideUI(offsetSide); 
+            updateToolStatusAndCursor(); redrawCanvas();
+        });
+    </script>
+</body>
+</html>
